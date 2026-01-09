@@ -1,0 +1,1169 @@
+---
+title: "Projet en Analyse des données"
+author: "Helya AMIRI"
+date: "2026-01-08"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document: default
+---
+
+# Introduction 
+Dans le contexte de l’assurance santé, il est essentiel de comprendre comment les caractéristiques individuelles telles que l’âge, le sexe, l’indice de masse corporelle (IMC) ou le statut tabagique, s’organisent entre elles et comment elles influencent les coûts médicaux facturés.
+
+Cette étude vise à identifier des profils d’individus présentant des caractéristiques socio-démographiques et de santé similaires, et à analyser la manière dont les coûts médicaux (charges) se positionnent par rapport à ces profils.
+
+L’objectif principal est de résumer l’information contenue dans les variables sociodémographiques et de mode de vie (âge, sexe, IMC, nombre d’enfants à charge, statut fumeur et région de résidence) à l’aide de quelques dimensions principales, puis d’étudier la relation entre ces dimensions et la variable de coût médical facturé, considérée comme variable illustrative.
+
+
+## Présentation de la base de données
+
+**Source et contexte:**
+Les données utilisées proviennent du jeu de données Kaggle **« Medical Cost Personal Dataset »**, contenu dans le fichier insurance.csv, disponible à l’adresse suivante : (https://www.kaggle.com/datasets/mirichoi0218/insurance).
+Ce jeu de données est issu de l’ouvrage Machine Learning with R de Brett Lantz.
+
+Dans ce projet, le fichier insurance.csv est utilisé tel quel. Avant de réaliser l’analyse factorielle, le typage des variables est vérifié et harmonisé afin de distinguer correctement les variables quantitatives et qualitatives.
+
+
+**Description des individus et des variables:**
+
+Individus (lignes) : assurés (bénéficiaires primaires), n = 1338
+
+Variables (colonnes) :
+
+- age : âge (quantitative)
+
+- sex : sexe (qualitative : female/male)
+
+- bmi : indice de masse corporelle(IMC) (quantitative)
+
+- children : nombre d’enfants (quantitative discrète)
+
+- smoker : fumeur (qualitative : yes/no)
+
+- region : région (qualitative : northeast/southeast/southwest/northwest)
+
+- charges : coût médical facturé (quantitative) — **variable d’intérêt**
+
+Les variables décrivent des caractéristiques individuelles et un coût charges (dépense médicale).
+
+# Importation et préparation des données
+Dans un premier temps, les packages nécessaires à l’analyse sont installés puis chargés.
+Donc on install les packages qu'on a besoin dans la consule avec le code suivant : 
+
+install.packages(c(
+  "FactoMineR",
+  "factoextra",
+  "PCDimension",
+  "corrplot",
+  "skimr",
+  "psych",
+  "dplyr",
+  "ade4"
+))
+
+Ensuite, les réglages globaux du document sont définis et les packages sont chargés dans l’environnement R :
+
+
+```{r setup, include=FALSE}
+
+# Chunk "setup" : réglages globaux + chargement des packages
+knitr::opts_chunk$set(
+  fig.align = "center",
+  fig.pos = "H",
+  warning = FALSE,
+  message = FALSE
+)
+
+
+# Chargement des packages
+library(dplyr)
+library(ggplot2)
+library(FactoMineR)
+library(factoextra)
+library(patchwork)
+library(PCDimension)
+library(corrplot)
+library(skimr)
+library(psych)
+library(ade4)
+```
+
+### Importation des données:
+Les données sont importées à partir du fichier insurance.csv à l’aide de la fonction **read.csv**.
+L’option **stringsAsFactors = TRUE** permet de convertir automatiquement les variables de type caractère en variables qualitatives (facteurs), ce qui est nécessaire pour l’analyse factorielle des données mixtes.
+
+```{r}
+# Import de données
+df <- read.csv("insurance.csv", stringsAsFactors = TRUE)
+```
+
+```{r}
+# dimensions du data frame (nombre de lignes et de colonnes)
+dim(df)
+
+# les premières lignes du data frame
+head(df)
+
+# la structure du data frame(types des variables)
+str(df)
+
+```
+Dans R, les variables qualitatives doivent être déclarées au format factor pour être correctement reconnues comme des modalités (niveaux) et non comme du texte.
+Ici, **sex**, **smoker** et **region** sont des variables qualitatives.
+
+```{r}
+# Conversion des variables qualitatives en facteurs
+df$sex <- as.factor(df$sex)
+df$smoker <- as.factor(df$smoker)
+df$region <- as.factor(df$region)
+```
+
+Avant toute analyse statistique, il est important de contrôler la présence de valeurs manquantes (NA), car elles peuvent fausser les résultats ou provoquer des erreurs lors de l’exécution des méthodes.
+La commande **colSums(is.na(df))** calcule, pour chaque variable, le nombre total de valeurs manquantes :
+```{r}
+# Vérifier valeurs manquantes
+colSums(is.na(df))
+```
+toutes les colonnes affichent 0, ce qui signifie que la base ne contient aucune valeur manquante.
+
+# Méthodologie / Analyses
+
+## Statistiques descriptives
+
+Dans un premier temps, des statistiques descriptives simples sont calculées afin de mieux comprendre la distribution de chaque variable.
+
+```{r}
+library(psych)
+describe(df)
+```
+La fonction **`describe()`** calcule des statistiques descriptives pour chaque variable du jeu de données :
+
+- **n** : nombre d’observations  
+  \[
+  n = \text{nombre total de valeurs observées}
+  \]
+
+- **mean** : moyenne  
+  \[
+  \bar{x} = \frac{1}{n} \sum_{i=1}^{n} x_i
+  \]
+
+- **sd** : écart-type  
+  \[
+  sd = \sqrt{\frac{1}{n-1} \sum_{i=1}^{n} (x_i - \bar{x})^2}
+  \]
+
+- **median** : médiane  
+  \[
+  \text{median} =
+  \begin{cases}
+  x_{\left(\frac{n+1}{2}\right)} & \text{si } n \text{ est impair} \\
+  \frac{x_{\left(\frac{n}{2}\right)} + x_{\left(\frac{n}{2}+1\right)}}{2} & \text{si } n \text{ est pair}
+  \end{cases}
+  \]
+
+- **trimmed** : moyenne tronquée (par défaut 10 %)  
+  \[
+  \bar{x}_{\text{trim}} = \frac{1}{n(1-2\alpha)} 
+  \sum_{i=\alpha n + 1}^{(1-\alpha)n} x_{(i)}
+  \quad \text{avec } \alpha = 0.1
+  \]
+
+
+Pour les variables qualitatives (sex, smoker, region), describe() affiche des moyennes/écarts-types car ces variables sont codées en nombres de modalités. Ces statistiques ne s’interprètent pas comme pour une variable quantitative ; pour ces variables, on préfère des tableaux de fréquences.
+
+Ces premiers résultats indiquent que : charges est très dispersée et probablement non symétrique, donc elle risque de fortement influencer la structure si on la met en active.
+Cela justifie de la considérer comme variable quantitative supplémentaire (illustrative) dans la FAMD, afin d’explorer sa relation aux axes sans “diriger” l’analyse.
+
+
+Pour avoir un résumé global:
+**skim()** fournit un tableau descriptif plus riche et structuré, séparant automatiquement :
+- les variables qualitatives (facteurs) : nombre de modalités, taux de complétude, etc.
+- les variables quantitatives : moyenne, écart-type, quantiles (p0, p25, p50, p75, p100) et mini-histogrammes.
+```{r}
+library(skimr) 
+
+skim(df)
+summary(df)
+```
+
+D’après `skim(df)` et `summary(df)` pour les variable **qualitatives** :
+
+- **(`sex`)** : 2 modalités  
+  - *female* : 662  
+  - *male* : 676  
+  → Répartition presque équilibrée.
+
+- **(`smoker`)** : 2 modalités  
+  - *no* : 1064  
+  - *yes* : 274  
+
+- **(`region`)** : 4 modalités  
+  - *northeast* : 324  
+  - *northwest* : 325  
+  - *southeast* : 364  
+  - *southwest* : 325  
+  → Répartition assez homogène entre les régions.
+  
+
+Et les variables **quantitatives**:
+
+- **Âge (`age`)** :  
+  Min = 18, Q1 = 27, Médiane = 39, Q3 = 51, Max = 64, Moyenne ≈ 39,2  
+  → Population majoritairement adulte, relativement étalée, centrée autour de 39 ans.
+
+- **IMC (`bmi`)** :  
+  Min ≈ 15,96, Q1 ≈ 26,30, Médiane ≈ 30,40, Q3 ≈ 34,69, Max ≈ 53,13  
+
+- **Nombre d’enfants (`children`)** :  
+  Min = 0, Q1 = 0, Médiane = 1, Q3 = 2, Max = 5, Moyenne ≈ 1,10  
+  → La majorité des individus ont entre 0 et 2 enfants ; distribution discrète.
+
+- **Charges (`charges`)** :  
+  Min ≈ 1121, Q1 ≈ 4740, Médiane ≈ 9382, Q3 ≈ 16640, Max ≈ 63770, Moyenne ≈ 13270  
+  → Forte asymétrie à droite : la moyenne est nettement supérieure à la médiane, suggérant la présence de coûts très élevés (valeurs extrêmes) qui augmentent la dispersion.
+
+
+## histogrammes: Distributions des variables quantitatives
+pour visualiser la forme des distributions (symétrie, dispersion, valeurs extrêmes) avant l'analyse factorielle.
+
+```{r}
+# Mise en page : 2 lignes x 2 colonnes
+par(mfrow = c(2,2), mar = c(4,4,3,1))  # mar ajuste les marges
+
+hist(df$age, main="Distribution de l'âge", xlab="age", col="steelblue2", border="white", breaks = 30)
+hist(df$bmi, main="Distribution de BMI", xlab="bmi", col="darkseagreen3", border="white", breaks = 30)
+hist(df$children, main="Distribution de Enfants", xlab="enfants", col="goldenrod2", border="white", breaks = 30)
+hist(df$charges, main="Distribution de Charges", xlab="charges", col="tomato2", border="white", breaks = 30)
+par(mfrow=c(1,1))
+
+```
+### Interprétation des histogrammes
+
+1) **Âge (`age`)**
+
+La distribution de l’âge est relativement étalée entre 18 et 64 ans, sans pic extrême marqué.  
+→ La variable est bien répartie et peut contribuer de manière équilibrée à la structure factorielle.
+
+2) **IMC (`bmi`)**
+
+La distribution de l’IMC est concentrée autour de 30, avec une dispersion modérée et la présence de quelques valeurs élevées.  
+→ La population présente globalement un IMC plutôt élevé (cohérent avec une médiane d’environ 30,4), avec quelques individus ayant un IMC très important.
+
+3) **Nombre d’enfants (`children`)**
+
+La distribution est discrète (valeurs entières) et fortement concentrée sur 0, 1 et 2 enfants, avec très peu d’individus ayant 4 ou 5 enfants.  
+→ Cette variable présente une asymétrie à droite, indiquant que la majorité des individus ont peu ou pas d’enfants.
+
+4) **Charges (`charges`)**
+La distribution des charges est fortement asymétrique à droite (skewness positive).
+La majorité des individus ont des charges faibles à modérées, tandis qu’un petit nombre présente des charges très élevées, ce qui crée une longue queue et suggère la présence de valeurs extrêmes ou d’une sous-population à coûts élevés.
+
+La plupart des valeurs se concentrent entre 0 et 15 000.
+
+La longue queue s’étend jusqu’à environ 60 000, indiquant quelques cas rares à coûts très élevés (outliers potentiels).
+
+On note également un petit groupe de valeurs autour de 30 000–45 000, pouvant représenter une sous-population (par exemple, personnes avec facteurs de risque comme le tabagisme ou des problèmes de santé).
+
+→ En résumé, la variable charges montre :
+- une forte hétérogénéité,
+- la présence de valeurs extrêmes,
+
+Comme cette variable est très asymétrique et contient des valeurs extrêmes, elle pourrait influencer fortement l’analyse factorielle si elle est utilisée comme variable active.
+
+
+## Répartition des variables qualitatives
+
+Les diagrammes en barres permettent de visualiser la distribution des individus selon les différentes variables qualitatives.
+
+```{r}
+# par sexe
+ggplot(df, aes(x = sex, fill = sex)) +
+  geom_bar() +  # Compte automatiquement le nombre d'individus par sexe
+  labs(
+    title = "Répartition des individus par sexe",
+    x = "Sexe",
+    y = "Effectif"
+  ) 
+
+# par fumeur
+ggplot(df, aes(x = smoker, fill = smoker)) +
+  geom_bar() +  # Nombre d'individus fumeurs / non-fumeurs
+  labs(
+    title = "Répartition des individus selon le fumeur",
+    x = "fumeur",
+    y = "Effectif"
+  ) 
+
+# par région
+ggplot(df, aes(x = region, fill = region)) +
+  geom_bar() + # Nombre d'individus par région
+  labs(
+    title = "Répartition des individus par région",
+    x = "Région",
+    y = "Effectif"
+  ) 
+
+```
+Les diagrammes en barres montrent une répartition assez équilibrée selon le sexe et la région.
+En revanche, il y a beaucoup moins de fumeurs que de non-fumeurs, ce qui fait de la variable smoker une variable potentiellement discriminante dans l’analyse factorielle.
+
+## Boxplots : comparaison des charges selon des variables qualitatives (smoker, sex) 
+Pour visualiser les différences de niveau de charges, la dispersion et les valeurs extrêmes selon les groupes. Les boxplots permettent de comparer une variable quantitative (charges) entre plusieurs groupes définis par une variable qualitative (smoker, sex).
+Ils résument :
+- la médiane (trait à l’intérieur de la boîte),
+- l’intervalle interquartile Q1–Q3 (la boîte),
+- la dispersion des données (moustaches),
+- les valeurs extrêmes (points isolés).
+Cet outil est particulièrement utile pour identifier rapidement des différences de niveau et de variabilité des charges entre catégories.
+
+```{r}
+# Chargement des librairies
+library(dplyr)    # Manipulation des données
+library(psych)    # Statistiques descriptives
+library(ggplot2)  # Visualisation graphique
+
+
+# distribution des charges selon le fumeur
+ggplot(df, aes(x = smoker, y = charges, fill = smoker)) +
+  geom_boxplot(alpha = 0.7) +  # Représente la médiane, les quartiles et les valeurs extrêmes
+  labs(
+    title = "Distribution des charges selon le fumeur",
+    x = "fumeur",
+    y = "Charges"
+  ) +
+  theme_minimal()  # Thème graphique épuré
+
+
+# distribution des charges selon le sexe
+ggplot(df, aes(x = sex, y = charges, fill = sex)) +
+  geom_boxplot(alpha = 0.7) +  # Visualisation de la dispersion des charges par sexe
+  labs(
+    title = "Distribution des charges selon le sexe",
+    x = "Sexe",
+    y = "Charges"
+  ) +
+  theme_minimal()
+
+```
+
+### Interprétation des résultats
+
+**(`smoker`):**
+
+Les boxplots mettent en évidence :
+- une médiane des charges nettement plus élevée chez les fumeurs,
+- une dispersion beaucoup plus importante,
+- un nombre plus élevé de valeurs extrêmes élevées.
+
+→ Ces observations suggèrent que le tabagisme est fortement associé à une augmentation des dépenses médicales.  
+Dans l’analyse factorielle des données mixtes (FAMD), la variable `smoker` est donc susceptible d’être très structurante et de contribuer fortement à certains axes factoriels.
+
+**(`sex`):**
+
+Les boxplots montrent :
+- des médianes relativement proches entre les hommes et les femmes,
+- des différences moins marquées que pour le statut fumeur,
+- une dispersion importante dans les deux groupes, cohérente avec l’asymétrie observée des charges.
+
+→ Le sexe apparaît ainsi comme une variable moins discriminante que le tabagisme pour expliquer les charges, ou dont l’effet est principalement indirect, via d’autres variables.
+
+### Conclusion
+
+Les boxplots confirment que la variable `charges` présente une forte hétérogénéité. Certaines variables qualitatives, en particulier `smoker`, semblent associées à des niveaux de dépenses très différents.  
+Cela justifie l’étude approfondie de ces relations dans la FAMD, en considérant `charges` comme variable illustrative.
+
+
+
+## Corrélations entre variables quantitatives
+Nous étudions les corrélations entre les variables quantitatives afin d’identifier les relations linéaires potentielles avant l’analyse factorielle.
+
+```{r}
+# Sélection des variables quantitatives
+quant <- df %>% 
+  select(age, bmi, children, charges)
+
+# Calcul de la matrice de corrélation(corrélations linéaires de Pearson)
+mat_cor <- cor(quant)
+
+# Visualisation de la matrice de corrélation
+corrplot::corrplot(
+  mat_cor,
+  type = "lower", # Affiche uniquement le triangle inférieur de la matrice
+  method = "color",
+  addCoef.col = "black" # la valeur numérique des corrélations
+)
+
+```
+
+### Interprétation de la matrice de corrélation (variables quantitatives)
+
+La matrice de corrélation met en évidence les relations linéaires entre les variables quantitatives : `age`, `bmi`, `children` et `charges`.
+
+- **Corrélation entre l’âge (`age`) et les charges (`charges`)** :  
+  La corrélation est positive et modérée (≈ 0,30).  
+  → Les dépenses médicales tendent à augmenter avec l’âge, ce qui est cohérent avec une consommation de soins plus importante chez les individus plus âgés.
+
+- **Corrélation entre l’IMC (`bmi`) et les charges (`charges`)** :  
+  La corrélation est positive mais plus faible (≈ 0,20).  
+  → Un IMC plus élevé est associé à des charges médicales légèrement plus importantes, suggérant un effet réel mais modéré.
+
+- **Corrélation entre le nombre d’enfants (`children`) et les charges (`charges`)** :  
+  La corrélation est très faible (≈ 0,07).  
+  → Le nombre d’enfants semble peu lié directement au niveau des charges médicales.
+
+- **Corrélations entre variables explicatives** :  
+  Les corrélations entre `age`, `bmi` et `children` sont faibles (proches de 0), indiquant une relative indépendance entre ces variables quantitatives.
+
+### Conclusion
+
+La variable `charges` est principalement associée à l’âge, puis à l’IMC, tandis que le nombre d’enfants joue un rôle marginal.  
+L’absence de corrélations fortes entre les variables quantitatives explicatives limite les problèmes de redondance et est favorable à l’analyse factorielle.
+
+
+# Choix de la méthode factorielle
+Le jeu de données étudié comporte simultanément des variables quantitatives (âge, IMC, nombre d’enfants, charges) et des variables qualitatives (sexe, statut fumeur, région).
+Une ACP ne traite que des quantitatives, une ACM ne traite que des qualitatives. La FAMD (Analyse factorielle des données mixtes) combine les deux, en équilibrant leurs contributions.
+
+
+### Objectifs de l’analyse
+
+L’analyse factorielle des données mixtes (FAMD) vise à :
+- résumer l’information des données dans un espace factoriel simple ;
+- identifier les variables et modalités qui contribuent le plus aux axes ;
+- projeter la variable `charges` comme variable illustrative afin d’aider à l’interprétation, sans influencer la construction des axes.
+
+
+### Variables actives et illustratives
+
+- **Variables actives** (participant au calcul des axes factoriels) :  
+  `age`, `bmi`, `children`, `sex`, `smoker`, `region`
+
+Les variables actives sont celles qui :
+- servent à construire les axes factoriels (Dim 1, Dim 2, etc.)
+- déterminent la position des individus dans l’espace factoriel
+- expliquent la structure principale des données
+
+- **Variable illustrative quantitative** :  
+  `charges`
+
+La variable illustrative :
+- ne participe pas au calcul des axes
+- est projetée a posteriori sur le plan factoriel
+- sert uniquement à interpréter les axes
+
+Pourquoi ce choix est pertinent ici ?
+Parce que charges est très asymétrique et très dispersée
+si elle était active, elle écraserait les autres variables
+
+# Analyse factorielle des données mixtes (FAMD)
+
+### Structure des résultats de la FAMD
+
+Après l’exécution de la fonction `FAMD`, les résultats de l’analyse sont stockés dans un objet de type liste.  
+Chaque composante correspond à un élément spécifique de l’analyse factorielle.
+
+```{r}
+library(FactoMineR)
+
+res <- FAMD(df, graph = FALSE)
+res
+```
+
+Les principaux objets disponibles dans l’objet résultat de la FAMD sont les suivants :
+
+- **`$eig` — Valeurs propres et inertie**  
+  Contient les valeurs propres associées à chaque axe factoriel ainsi que le pourcentage d’inertie expliquée.  
+  Ces informations permettent de déterminer le nombre d’axes à retenir pour l’interprétation.
+
+- **`$var` / `$svar` — Résultats pour les variables**  
+  Regroupe les coordonnées et les contributions des variables à la construction des axes factoriels.  
+  Cet objet permet d’identifier les variables les plus structurantes.
+
+- **`$ind` / `$sind` — Résultats pour les individus**  
+  Fournit les coordonnées des individus dans l’espace factoriel, leurs contributions et leur qualité de représentation (cos²).  
+  Il permet d’analyser les proximités et les profils d’individus.
+
+- **`$quali.var` — Variables qualitatives**  
+  Contient les coordonnées des modalités des variables qualitatives ainsi que leurs contributions aux axes factoriels.
+
+- **`$quanti.var` — Variables quantitatives**  
+  Donne les corrélations entre les variables quantitatives et les axes factoriels, facilitant l’interprétation des dimensions.
+
+L’interprétation de la FAMD repose principalement sur :
+- les **valeurs propres** (`eig`) pour le choix du nombre d’axes ;
+- les **contributions** et **cos²** des variables pour comprendre la construction des axes ;
+- la **projection des individus** pour identifier des groupes ou des profils similaires.
+
+### Données rares
+
+```{r}
+library(dplyr)
+# Fonction pour identifier les modalités rares (présentes à moins de 5 %)
+rare_modalities <- function(var, seuil = 5) {
+  tab <- prop.table(table(var)) * 100 # Calcul des pourcentages de chaque modalité
+  data.frame(
+    Modalité = names(tab),
+    Pourcentage = round(as.vector(tab), 2)
+  ) %>%
+    # Sélection des modalités dont la fréquence est inférieure au seuil
+    filter(Pourcentage < seuil)}
+
+#modalités rares pour la variable sexe
+rare_modalities(df$sex)
+
+#modalités rares pour le fumeur
+rare_modalities(df$smoker)
+
+#modalités rares pour la variable région
+rare_modalities(df$region)
+
+```
+Il n’y a pas de modalités très rares dans les variables qualitatives
+
+
+```{r}
+# Valeurs extrêmes des charges (au-dessus du 95e percentile)
+quantile(df$charges, probs = 0.95)
+
+df %>% 
+  filter(charges > quantile(charges, 0.95)) %>%
+  nrow()
+
+```
+Le calcul du 95 percentile montre que 95 % des individus ont des charges inférieures à 41 181,83, tandis que 67 individus présentent des charges supérieures à ce seuil.
+
+Ces observations indiquent la présence de valeurs extrêmes rares mais très élevées dans la variable charges.
+
+
+### Valeurs propres et choix du nombre de dimensions
+
+L’analyse des valeurs propres permet de déterminer le nombre d’axes factoriels à retenir pour l’interprétation.  
+Le tableau des valeurs propres (`res$eig`) fournit, pour chaque composante, la valeur propre associée ainsi que le pourcentage d’inertie expliquée.
+```{r}
+# Valeurs propres et inertie
+res$eig
+```
+### Interprétation des valeurs propres et de l’inertie (FAMD)
+
+Les valeurs propres montrent la part de variabilité (inertie) expliquée par chaque dimension de la FAMD.
+
+- **Dimension 1 (Dim 1)** : 21,2 % de la variabilité.  
+Axe le plus important, il résume une grande partie de l’information.
+
+- **Dimension 2 (Dim 2)** : 13,9 % de la variabilité.  
+
+- **Les deux premières dimensions** expliquent environ 35,1 % de l’inertie totale.  
+
+- **Dimensions 3 à 5** : chacune environ 11–12 % de l’inertie.  
+Leur contribution est plus faible.
+
+- **Cumul des cinq premières dimensions** : environ 69,7 % de l’inertie totale.  
+
+**Conclusion :**  
+Le plan Dim 1–Dim 2 constitue un bon compromis entre simplicité et quantité d’information expliquée.  
+
+
+### Éboulis des valeurs propres (Scree plot)
+
+Le scree plot représente la part d’inertie expliquée par chaque axe factoriel et permet de choisir le nombre de dimensions à retenir.
+
+On observe que la première dimension explique environ **21 %** de l’inertie totale, suivie d’une décroissance progressive pour les axes suivants.  
+Le plan factoriel **(Dim 1, Dim 2)**, qui cumule environ **35 %** de l’inertie, constitue donc un bon compromis pour une représentation synthétique des données.
+
+```{r}
+fviz_eig(res, addlabels = TRUE, main = "Des valeurs propres (FAMD)")
+```
+### Conclusion
+
+Les valeurs propres indiquent que la structure des données est principalement portée par les premières dimensions.
+Le plan factoriel (Dim 1, Dim 2) constitue un compromis satisfaisant entre simplicité et information, tout en laissant la possibilité d’examiner des axes supplémentaires pour affiner l’interprétation.
+
+
+## Plan factoriel des individus (FAMD)
+
+Le plan factoriel des individus représente chaque individu dans l’espace défini par les deux premiers axes factoriels (Dim 1 et Dim 2).  
+La proximité entre deux points indique des profils similaires, tandis qu’une forte distance traduit des profils différents.
+
+
+```{r}
+factoextra::fviz_famd_ind(
+  res,
+  repel = TRUE, # évite le chevauchement des étiquettes
+  alpha.ind = 0.6, # transparence des points
+  pointsize = 1.8, # taille des points
+  label = "none" # supprime les labels pour plus de lisibilité, sinon ce n'est pas visibile!
+) +
+  labs(title = "Plan factoriel des individus (FAMD)")
+
+```
+### Interprétation
+Le graphique montre une forte concentration d’individus autour de l’origine, ce qui indique des profils proches de la moyenne globale.  
+Il n’apparaît pas de séparation nette entre groupes d’individus sur le plan (Dim 1, Dim 2), mais plutôt une dispersion continue.
+
+La première dimension (Dim 1), qui explique environ **21 %** de l’inertie, structure principalement la variabilité entre individus, tandis que la seconde dimension (Dim 2), expliquant environ **14 %**, apporte une information complémentaire.
+
+Ce plan factoriel permet d’identifier des tendances générales et des individus atypiques.
+
+
+## Projection des individus selon le fumeur
+
+Le plan factoriel ci-dessous représente les individus projetés sur les deux premières dimensions de la FAMD (Dim 1 et Dim 2), avec une coloration selon le statut fumeur (`smoker`).
+
+```{r}
+# Visualisation des individus sur le plan factoriel Dim1-Dim2
+fviz_famd_ind(
+  res, # Résultat de l'analyse factorielle des données mixtes 
+  repel = TRUE, # Évite le chevauchement des étiquettes des points
+  habillage = "smoker", 
+  addEllipses = TRUE # Ajoute des ellipses de concentration pour chaque groupe
+) +
+labs(title = "Individus projetés sur Dim1-Dim2 (coloré par smoker)")
+
+```
+
+### Interprétation
+La projection des individus met en évidence une séparation partielle entre les fumeurs et les non-fumeurs, principalement le long de la première dimension (Dim 1).
+
+Les individus **fumeurs** apparaissent majoritairement situés du côté des valeurs positives de Dim 1, tandis que les **non-fumeurs** sont plus concentrés autour de l’origine ou du côté négatif de cet axe.  
+Les ellipses de concentration confirment cette tendance, bien qu’un chevauchement subsiste entre les deux groupes.
+
+Ces résultats suggèrent que le statut fumeur est une variable qualitative fortement structurante dans la FAMD et contribue significativement à la construction de la première dimension.  
+Cette observation est cohérente avec les analyses exploratoires précédentes montrant un lien fort entre le tabagisme et les charges médicales.
+
+
+
+## Qualité de représentation des individus (cos²)
+
+Le cos² mesure la **qualité de représentation d’un individu sur le plan factoriel**.  
+Un cos² élevé signifie que l’individu est bien représenté par les axes affichés, tandis qu’un cos² faible indique une mauvaise représentation.
+
+
+```{r}
+factoextra::fviz_famd_ind(
+res,
+col.ind = "cos2", # coloration selon le cos²
+gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+alpha.ind = 0.7, # transparence
+pointsize = 1.8, # taille des points
+label = "none", # supprime les labels pour plus visible
+repel = TRUE
+) +
+labs(title = "Qualité de représentation des individus (cos²)") +
+theme_minimal()
+
+
+```
+
+```{r}
+factoextra::fviz_famd_ind(
+res,
+col.ind = "cos2",
+gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+repel = TRUE
+) + labs(title="Individus colorés par cos2 (qualité de représentation)")
+
+```
+### Interprétation
+
+Les individus situés loin de l’origine et colorés en **jaune / orange / rouge** présentent un cos² élevé :  
+ils sont **bien représentés** par les deux premiers axes factoriels et peuvent être interprétés de manière fiable.
+
+À l’inverse, les individus proches de l’origine, majoritairement en **bleu**, ont un cos² faible.  
+→ Leur position est mal expliquée par le plan (Dim 1, Dim 2) et leur interprétation doit être faite avec précaution.
+
+
+# Représentation des variables dans la FAMD
+Le graphique des variables permet de visualiser la position des variables quantitatives et des modalités des variables qualitatives dans l’espace factoriel.  
+Il indique comment ces variables contribuent à la construction des axes factoriels et comment elles sont corrélées entre elles.
+
+```{r}
+fviz_famd_var(res, repel = TRUE) +
+labs(title = "Variables (quantitatives + modalités qualitatives)")
+```
+### Interprétation
+
+- **Dimension 1 (Dim 1)**, qui explique environ **21 %** de l’inertie, est principalement structurée par les variables  
+  `smoker` et `charges`, fortement projetées sur l’axe horizontal.  
+  → Cette dimension peut être interprétée comme un **axe lié au niveau de dépenses médicales et au statut fumeur**.
+
+- **Dimension 2 (Dim 2)**, expliquant environ **14 %** de l’inertie, est davantage associée à la variable `bmi` ainsi qu’aux modalités de `region`.  
+  → Elle reflète plutôt des différences liées à la **morphologie (IMC)** et à la **localisation géographique**.
+
+- Les variables `age`, `sex` et `children` sont proches de l’origine, indiquant une contribution plus faible aux deux premiers axes.  
+  → Leur effet est plus diffus ou se manifeste sur des dimensions ultérieures.
+
+
+## Contributions des variables à la dimension 1
+
+Ce graphique présente la contribution de chaque variable à la construction de la première dimension factorielle (Dim 1).  
+La ligne rouge en pointillés correspond à la contribution moyenne attendue (100 / nombre de variables) :  
+les variables situées au-dessus de cette ligne contribuent plus que la moyenne à l’axe.
+
+```{r}
+factoextra::fviz_contrib(res, choice="var", axes=1) +
+labs(title="Contributions des variables à Dim 1")
+
+```
+### Interprétation
+
+La dimension 1 est principalement structurée par :
+- **`charges`**, qui présente la contribution la plus élevée ;
+- **`smoker`**, dont la contribution est également largement supérieure à la moyenne.
+
+Ces deux variables dominent fortement la construction de l’axe 1, ce qui suggère que cette dimension est principalement liée au **niveau des dépenses médicales** et au **statut fumeur**.
+
+Les variables `bmi` et `age` contribuent de manière modérée, tandis que `region`, `sex` et `children` ont des contributions faibles et jouent un rôle marginal dans la définition de cet axe.
+
+Ainsi, la dimension 1 peut être interprétée comme un **axe de dépenses de santé fortement associé au tabagisme**.
+
+
+## Contributions des variables à la dimension 2
+
+Ce graphique fait la meme chose pour la deuxième dimension factorielle (Dim 2).  
+
+```{r}
+factoextra::fviz_contrib(res, choice="var", axes=2) +
+labs(title="Contributions des variables à Dim 2")
+
+```
+### Interprétation
+
+La dimension 2 est principalement structurée par :
+- **`bmi`**, qui présente la contribution la plus élevée ;
+- **`region`**, dont la contribution est également très supérieure à la moyenne.
+
+Ces deux variables dominent la construction de l’axe 2, indiquant que cette dimension est essentiellement liée à des différences de **morphologie (IMC)** et de **localisation géographique**.
+
+La variable `smoker` contribue de manière secondaire, tandis que `charges`, `age`, `sex` et `children` ont des contributions faibles et jouent un rôle marginal dans la définition de cet axe.
+
+Ainsi, la dimension 2 peut être interprétée comme un **axe lié à l’IMC et aux effets régionaux**, relativement indépendant des dépenses médicales.
+
+
+## Représentation des modalités qualitatives sur le plan factoriel (1,2)
+
+Ce graphique représente les **modalités des variables qualitatives** projetées sur le plan factoriel formé par les deux premières dimensions (Dim 1 et Dim 2).  
+La proximité entre deux modalités indique des profils similaires, tandis qu’un éloignement traduit des profils différents.
+
+```{r}
+factoextra::fviz_famd_var(
+  res, # Résultat de la FAMD
+  choice = "quali.var", #visualiser que les variables qualitatives
+  repel = TRUE # Évite que les étiquettes se chevauchent
+  ) + labs(title="Modalités qualitatives sur le plan (1,2)")
+```
+### Interprétation
+
+- Sur la **dimension 1 (Dim 1)**, les modalités **`yes` (fumeur)** et **`no` (non-fumeur)** sont clairement opposées.  
+  → Cette séparation confirme que le statut fumeur est une variable fortement discriminante sur le premier axe.
+
+- Les modalités **`male`** et **`female`** sont proches de l’origine, indiquant un effet faible du sexe sur les deux premières dimensions.  
+  → Le sexe ne structure pas fortement le plan factoriel (1,2).
+
+- Concernant la variable **`region`**, les modalités sont davantage dispersées sur la **dimension 2 (Dim 2)** :  
+  - `southeast` est fortement projetée sur Dim 2 positive ;
+  - `northwest` et `northeast` apparaissent plutôt du côté négatif de Dim 2.  
+  → Cela suggère un effet régional principalement porté par la deuxième dimension.
+
+### Conclusion
+
+La représentation des modalités qualitatives montre que :
+- le **statut fumeur** structure fortement la dimension 1 ;
+- les **différences régionales** contribuent principalement à la dimension 2 ;
+- la variable **sexe** joue un rôle marginal sur le plan (1,2).
+
+
+## Projection de la variable illustrative `charges`
+
+La variable `charges` a été définie comme variable quantitative illustrative. 
+```{r}
+factoextra::fviz_famd_var(
+  res, # Résultat de la FAMD
+  choice = "quanti.var", #visualiser que les variables quantitative
+  repel = TRUE  # Évite que les étiquettes se chevauchent
+) +
+  labs(title = "Projection des variables quantitatives") 
+```
+
+### Interprétation de la projection des variables quantitatives
+
+Le cercle des corrélations représente les relations entre les variables quantitatives et les deux premières dimensions de la FAMD.  
+La longueur des vecteurs indique la qualité de représentation des variables sur le plan (Dim 1, Dim 2), tandis que l’angle entre deux vecteurs traduit leur corrélation.
+
+- La variable **`charges`** est fortement projetée sur la **dimension 1**, indiquant une forte corrélation positive avec cet axe.  
+  → La première dimension est donc principalement associée au niveau des dépenses médicales.
+
+- La variable **`age`** est également positivement corrélée à la dimension 1, mais dans une moindre mesure.  
+  → Les dépenses tendent à augmenter avec l’âge, ce qui est cohérent avec les analyses descriptives.
+
+- La variable **`bmi`** est davantage corrélée à la **dimension 2**, contribuant principalement à la structuration de cet axe.  
+  → La seconde dimension reflète des différences liées à la morphologie (IMC).
+
+- La variable **`children`** est proche de l’origine, ce qui indique une faible corrélation avec les deux premières dimensions.  
+  → Son influence sur le plan (Dim 1, Dim 2) est marginale.
+
+### Conclusion
+
+Le plan factoriel (Dim 1, Dim 2) oppose principalement les individus selon le niveau de charges médicales et l’âge sur la première dimension, et selon l’IMC sur la seconde.  
+La variable `children` joue un rôle secondaire dans la structuration de l’espace factoriel.
+
+
+## Ellipses de concentration des modalités (FAMD)
+Dans cette section, on visualise la répartition des individus selon certaines variables qualitatives à l’aide d’ellipses de concentration sur le plan (Dim 1 × Dim 2). Ces ellipses permettent de comparer rapidement les groupes (modalités) et de voir s’ils se distinguent sur les dimensions principales.
+
+```{r}
+df2 <- df %>%  #on ajoute age_cat et bmi_cat (des variables de groupes) sans modifier df original
+  mutate(
+    sex    = as.factor(sex),
+    smoker = as.factor(smoker),
+    region = as.factor(region),
+    age_cat = cut(age, breaks = c(0, 30, 45, 60, Inf), right = FALSE),
+    # Création de groupes d'âge
+    bmi_cat = cut(bmi, breaks = c(0, 25, 30, 35, Inf), right = FALSE)
+    # Création de groupes de BMI 
+  )
+
+res2 <- FAMD(df2, graph = FALSE)
+
+plotellipses(res2, keepvar = c("sex","smoker","region","age_cat","bmi_cat"), level = 0.95) #trace les ellipses (niveau 95%) 
+
+
+```
+plotellipses '(res, keepvar = ..., level = 0.95)' trace, pour chaque variable qualitative donnée dans 'keepvar', des ellipses à 95% autour des individus appartenant à chaque modalité.
+Le graphique est présenté en panneaux : un panneau par variable (ex. sex, smoker, region). Les ellipses résument la zone où se trouvent la majorité des individus de chaque modalité sur le plan factoriel.
+
+### Interprétation par variable (sex, smoker, region, age_cat, bmi_cat)
+
+- **smoker** :  
+Les points yes et no sont partiellement séparés, surtout sur Dim 1, ce qui suggère que le statut de fumeur influence la structuration des individus, en cohérence avec l’effet du tabagisme sur les charges.
+
+- **sex** :  
+Les points pour male et female se superposent beaucoup, ce qui indique que le sexe n’est pas très structurant sur les deux premières dimensions. Les profils des hommes et des femmes sont proches sur Dim 1 et Dim 2.
+
+- **region** :  
+Les points des différentes régions se recouvrent largement, ce qui montre que la région n’est pas très discriminante sur ce plan factoriel. Aucun groupe ne se détache nettement.
+
+- **age_cat** :  
+On observe une répartition progressive des tranches d’âge le long de Dim 1, du plus jeune au plus âgé, indiquant un gradient d’âge sur cette dimension.
+
+- **bmi_cat** :  
+Les catégories de BMI montrent une certaine séparation, notamment sur Dim 2, ce qui suggère que Dim 2 reflète partiellement un gradient de corpulence.
+
+
+
+## Rapport de corrélation η² : liaison Qualitative ↔ Axe factoriel
+
+Le **rapport de corrélation** \( \eta^2_{j,s} \) mesure l’intensité de la liaison entre une variable qualitative \( j \) (par exemple `smoker`) et une dimension factorielle \( s \) (par exemple `Dim 1`) issue d’une **FAMD**.
+
+\[
+\eta^2_{j,s} = \frac{\text{Inertie inter-classes}}{\text{Inertie totale}} \in [0,1]
+\]
+
+- **Si** \( \eta^2 \approx 0 \) : les modalités (groupes) sont mélangées sur l’axe \( s \) → **faible liaison**.  
+- **Si** \( \eta^2 \) est élevé (ex. > 0.20 / 0.30 selon le contexte) : les modalités sont bien séparées sur l’axe → **forte liaison**.  
+- **Si** \( \eta^2 = 1 \) : séparation parfaite (cas très rare en pratique).
+
+Cette quantité est **équivalente à un \( R^2 \)** d’une ANOVA à un facteur : elle correspond à la proportion de variance de la coordonnée factorielle (variable quantitative) expliquée par l’appartenance à un groupe (variable qualitative).
+
+```{r}
+# Récupération des coordonnées des individus
+ind_coord <- res2$ind$coord
+
+# Fonction pour calculer eta² via ANOVA : eta² = SS_between / SS_total
+eta2_aov <- function(coord, group){
+  # ANOVA par rapport au groupe
+  a <- aov(coord ~ group)
+  # Extraction des sommes des carrés (Sum Sq) de l'ANOVA
+  ss <- summary(a)[[1]][, "Sum Sq"]
+  # Somme des carrés inter-classes (effect of group)
+  ss_between <- ss[1]
+  # Somme totale des carrés (inter + intra)
+  ss_total   <- sum(ss, na.rm = TRUE)
+  ss_between / ss_total
+}
+
+# Liste des variables qualitatives
+vars_quali <- c("sex","smoker","region","age_cat","bmi_cat")
+
+# Calcul de eta² pour chaque variable qualitative sur Dim1 et Dim2
+eta2_table <- sapply(vars_quali, function(v){
+  c(
+    Dim1 = eta2_aov(ind_coord[,1], df2[[v]]),  # eta² sur Dim1
+    Dim2 = eta2_aov(ind_coord[,2], df2[[v]])   # eta² sur Dim2
+  )
+})
+
+# Transposition pour avoir un tableau
+t(eta2_table)
+
+```
+
+**Interprétation :**
+
+- **sex** : \( \eta^2 \approx 0.005 \) → très faible liaison avec les deux dimensions. Les hommes et les femmes sont presque mélangés sur Dim1 et Dim2.  
+- **smoker** : \( \eta^2 \approx 0.13 \) sur Dim1 → liaison modérée avec Dim1, très faible sur Dim2. Les fumeurs et non-fumeurs sont un peu séparés sur la première dimension.  
+- **region** : liaison faible à modérée, surtout sur Dim2 (\( \eta^2 \approx 0.17 \)). Certaines régions tendent à se distinguer davantage sur la deuxième dimension.  
+- **age_cat** : \( \eta^2 \approx 0.44 \) sur Dim1 et \( \eta^2 \approx 0.38 \) sur Dim2 → **forte liaison**. Les catégories d’âge sont bien séparées sur les deux axes.  
+- **bmi_cat** : \( \eta^2 \approx 0.47 \) sur Dim1 et \( \eta^2 \approx 0.41 \) sur Dim2 → **forte liaison**, indiquant que les catégories d’IMC expliquent beaucoup de la variance factorielle.
+
+**Conclusion :**  
+Les variables `age_cat` et `bmi_cat` sont les plus fortement associées aux dimensions principales de la FAMD, tandis que `sex` et `smoker` contribuent peu à la séparation des individus sur ces axes. `region` montre une contribution intermédiaire, surtout sur Dim2.
+
+
+
+## La liaison entre une variable qualitative et une dimension FAMD
+```{r}
+library(ggplot2)
+
+# Fonction pour visualiser la liaison entre une variable qualitative et une dimension FAMD
+plot_eta2_famd <- function(res, data, var, axis = 1) {
+  score <- res$ind$coord[, axis] # Coordonnées des individus
+  grp   <- as.factor(data[[var]])# Variable qualitative en facteur
+  dfp <- data.frame(score = score, grp = grp)
+  stats <- aggregate(score ~ grp, dfp, mean)  # moyenne par groupe
+  names(stats)[2] <- "mean_g"
+  n_g <- as.data.frame(table(dfp$grp))# taille de chaque groupe
+  names(n_g) <- c("grp", "n")
+  stats <- merge(stats, n_g, by = "grp")
+  mu <- mean(dfp$score)   # moyenne globale
+  V_inter <- sum(stats$n * (stats$mean_g - mu)^2) # variance inter-groupes
+  V_intra <- sum(tapply(dfp$score, dfp$grp, function(x) sum((x - mean(x))^2))) # variance intra-groupes
+  eta2 <- V_inter / (V_inter + V_intra)  # eta²
+  # Écart-type par groupe 
+  sd_g <- tapply(dfp$score, dfp$grp, sd)
+  stats$sd_g <- sd_g[as.character(stats$grp)]
+  ggplot(dfp, aes(x = score, y = grp, color = grp)) +
+    geom_jitter(height = 0.12, alpha = 0.6, size = 1.6) + # points individuels
+    geom_vline(xintercept = mu, linetype = 2) + # ligne moyenne globale
+    geom_point(data = stats, aes(x = mean_g, y = grp), shape = 18, size = 4, inherit.aes = FALSE) +  # moyennes
+    geom_errorbarh(data = stats,
+                   aes(xmin = mean_g - sd_g, xmax = mean_g + sd_g, y = grp),
+                   height = 0.20, inherit.aes = FALSE) + # barres intra-groupe (±1 sd)
+    labs(
+      title = paste0("Liaison entre ", var, " et Dim ", axis, " (FAMD)"),
+      subtitle = paste0("V.Inter = ", round(V_inter, 2),
+                        " | V.Intra = ", round(V_intra, 2),
+                        " | eta² = ", round(eta2, 3)),
+      x = paste0("Score sur Dim ", axis),
+      y = var
+    ) +
+    theme_minimal() +
+    theme(legend.position = "none")
+}
+
+```
+
+```{r}
+# liaison smoker ~ Dim1
+plot_eta2_famd(res2, df2, var = "smoker", axis = 1)
+
+# liaison smoker ~ Dim2
+plot_eta2_famd(res2, df2, var = "smoker", axis = 2)
+```
+
+Les graphiques comparent la distribution des scores factoriels selon la modalité `smoker` (yes vs no) sur Dim 1 et Dim 2.  
+
+- Le **point noir** représente la moyenne du groupe.  
+- La **barre horizontale** illustre la dispersion intra-groupe (variabilité à l’intérieur de chaque modalité).  
+- La **ligne verticale en pointillés** correspond à la moyenne globale (0).
+
+## Dim 1
+On observe un décalage net des moyennes entre `smoker = yes` (scores plutôt positifs) et `smoker = no` (scores plutôt négatifs).  
+Le rapport de corrélation est \( \eta^2 = 0.128 \), ce qui indique une **liaison modérée** : l’axe 1 distingue partiellement les fumeurs et non-fumeurs, même si la dispersion à l’intérieur de chaque groupe reste importante.
+
+## Dim 2
+Les deux distributions sont presque centrées au même endroit et se recouvrent fortement.  
+Le rapport de corrélation est très faible (\( \eta^2 = 0.013 \)), ce qui montre que Dim 2 est **très peu liée** à la variable `smoker` : cet axe n’explique pratiquement pas la différence entre fumeurs et non-fumeurs.
+
+## Conclusion
+La variable `smoker` contribue surtout à la structuration selon Dim 1, tandis que Dim 2 **ne discrimine pas** les individus selon le statut de fumeur.
+
+
+
+```{r}
+# Liaison bmi_cat ~ Dim1
+plot_eta2_famd(res2, df2, var = "bmi_cat", axis = 1)
+
+# Liaison bmi_cat ~ Dim2
+plot_eta2_famd(res2, df2, var = "bmi_cat", axis = 2)
+
+```
+
+## Dim 1
+Les catégories de BMI sont clairement ordonnées le long de l’axe :  
+- Les BMI faibles \([0, 25[\) ont des scores plutôt négatifs.  
+- Les BMI élevés \([35, +\infty[\) ont des scores plutôt positifs.  
+
+Le rapport de corrélation est élevé (\( \eta^2 = 0.468 \)), ce qui traduit une **forte liaison** entre `bmi_cat` et Dim 1.  
+Autrement dit, Dim 1 capture fortement un gradient de corpulence (du BMI faible vers le BMI élevé), même si un certain recouvrement subsiste entre catégories voisines.
+
+## Dim 2
+On observe également une différenciation nette des groupes sur l’axe 2, avec des moyennes distinctes et une structuration par niveaux de BMI.  
+Le rapport de corrélation reste élevé (\( \eta^2 = 0.405 \)), indiquant une **liaison forte** entre `bmi_cat` et Dim 2.  
+Cet axe oppose donc aussi des profils liés au BMI, selon une organisation complémentaire à celle de Dim 1.
+
+## Conclusion
+La variable `bmi_cat` est très structurante pour les deux premières dimensions de la FAMD :  
+les axes 1 et 2 reflètent fortement des différences entre catégories de BMI (gradient faible → élevé), ce qui confirme que la **corpulence joue un rôle majeur** dans la structuration des individus dans ce jeu de données.
+
+
+```{r}
+# Liaison region ~ Dim1
+plot_eta2_famd(res2, df2, var = "region", axis = 1)
+
+# Liaison region ~ Dim2
+plot_eta2_famd(res2, df2, var = "region", axis = 2)
+```
+
+## Dim 1
+Les moyennes des régions sont relativement proches et les nuages se recouvrent fortement.  
+Le rapport de corrélation est faible (\( \eta^2 = 0.082 \)), ce qui indique que la région explique peu la variabilité des scores sur la dimension 1.  
+Autrement dit, Dim 1 ne discrimine pas fortement les individus selon la région.
+
+## Dim 2
+On observe une séparation un peu plus marquée : certaines régions ont des moyennes plus négatives (ex. `southeast`), tandis que d’autres se situent plutôt du côté positif (ex. `northeast` et `northwest`).  
+Le rapport de corrélation reste toutefois modéré (\( \eta^2 = 0.168 \)), ce qui suggère que la région est davantage liée à Dim 2 qu’à Dim 1.  
+Cependant, la dispersion intra-région demeure importante, entraînant encore un recouvrement notable entre groupes.
+
+## Conclusion
+L’effet “region” est globalement **faible** dans la structuration factorielle :  
+- Peu associé à Dim 1  
+- Modérément associé à Dim 2  
+
+Les différences entre régions sont présentes mais limitées.
+
+
+
+## Visualisation des variables qualitatives
+
+Cette commande utilise le package **factoextra** pour visualiser la projection des variables qualitatives (et surtout de leurs modalités) sur le plan factoriel formé par Dim 1 et Dim 2 de la FAMD.
+
+
+```{r}
+library(factoextra)
+fviz_famd_var(res2, "quali.var", repel = TRUE)
+
+```
+
+La fonction `fviz_famd_var(res2, "quali.var")` affiche uniquement la partie **qualitative** de l’analyse FAMD.  
+Chaque point correspond à une **modalité** (par exemple `smoker = yes/no`, `region = southeast`, `bmi_cat = [30,35)`, etc.).
+
+
+- Plus une modalité est **éloignée de l’origine (0,0)**, plus elle est **discriminante** : elle contribue fortement à la structuration des individus sur Dim 1 et/ou Dim 2.
+- Des modalités **proches** traduisent des profils similaires sur le plan factoriel.
+- Des modalités situées dans des **directions opposées** correspondent à des profils contrastés, associés à des individus positionnés différemment dans l’espace factoriel.
+
+## Interprétation
+
+- Les modalités liées au **BMI** apparaissent très structurantes :  
+  la catégorie `[35, +Inf)` est fortement éloignée de l’origine (en bas à droite), tandis que `[0, 25)` se situe du côté opposé (en haut à gauche).  
+  Cela confirme que le niveau de BMI joue un rôle majeur dans la structuration sur les deux premières dimensions.
+
+- Les modalités de **l’âge** montrent une organisation progressive :  
+  les classes `[60, +Inf)` et `[45, 60)` se situent du côté positif de Dim 1, alors que les classes plus jeunes sont plutôt du côté négatif.  
+  Dim 1 capture ainsi en partie un **gradient d’âge** (jeunes ↔ âgés).
+
+- Pour la variable **`smoker`**, la modalité `yes` est nettement éloignée de l’origine, tandis que `no` est plus proche du centre.  
+  Cela indique que le statut de fumeur est associé à un profil spécifique sur le plan factoriel, principalement sur Dim 1, bien que l’opposition reste partielle.
+
+- La variable **`sex`** (`male`, `female`) est proche de l’origine :  
+  les deux modalités sont peu discriminantes sur Dim 1 et Dim 2, suggérant un effet faible du sexe dans la structuration principale.
+
+- Les modalités de **`region`** sont globalement proches du centre (à l’exception possible de `southeast`, légèrement plus éloignée).  
+  Cela indique que la région explique une part limitée de la variabilité sur les deux premières dimensions.
+
+## Effet de Guttman (variables ordinales)
+
+```{r}
+fviz_famd_ind(
+  res,
+  axes = c(1, 2),
+  repel = TRUE) +
+  labs(
+    title = "Détection visuelle de l’effet de Guttman",
+    subtitle = "Projection des individus sur Dim 1 et Dim 2")
+# Coordonnées des individus
+ind_coord <- as.data.frame(res$ind$coord)
+# Ordre selon Dim 1
+ind_coord$order_dim1 <- rank(ind_coord$Dim.1, ties.method = "first")
+# Graphique coloré par le gradient latent
+ggplot(ind_coord, aes(Dim.1, Dim.2, color = order_dim1)) +
+  geom_point(size = 2) +
+  scale_color_viridis_c() +
+  labs(
+    title = "Effet de Guttman (effet en fer à cheval)",
+    x = "Dimension 1",
+    y = "Dimension 2",
+    color = "Ordre latent (Dim 1)"
+  ) 
+
+```
+Le nuage des individus projeté sur le plan (Dim 1, Dim 2) présente une forme courbée en “fer à cheval”, typique de l’effet de Guttman (ou arch effect). Ce phénomène apparaît fréquemment en analyse factorielle lorsque les données contiennent un gradient latent (un ordre sous-jacent) : la première dimension capte l’essentiel de ce gradient, et la deuxième dimension en reflète surtout la courbure plutôt qu’une information totalement indépendante.
+
+### Interprétation
+
+Sur ce graphique, la couleur correspondant à l’**ordre latent (Dim 1)** évolue de manière progressive le long de la forme en arc.  
+Les individus situés à gauche du graphique (couleurs foncées) présentent des scores faibles sur la première dimension, tandis que la couleur s’éclaircit progressivement vers la droite, correspondant à des scores élevés sur Dim 1.
+
+Cette progression continue confirme que la **dimension 1 représente un axe d’ordre**, interprétable comme un gradient principal structurant les données.
+
+En revanche, la **dimension 2 doit être interprétée avec prudence**. Elle semble en grande partie refléter un effet géométrique de courbure induit par Dim 1, lié à une relation non linéaire, plutôt qu’une opposition indépendante entre individus.
+
+**Conclusion.**  
+La structure principale des données est dominée par un gradient latent capté par la dimension 1. La forme en arc observée sur le plan factoriel est caractéristique d’un **effet de Guttman**, fréquemment rencontré lorsque certaines variables sont ordinales ou résultent d’un découpage en classes, comme les catégories d’âge ou d’IMC.
+
+
+
+
+#  Discussion
+Cette section propose une synthèse de l’interprétation des deux premières dimensions issues de l’analyse factorielle des données mixtes (FAMD), en s’appuyant sur l’ensemble des graphiques et indicateurs précédemment analysés (valeurs propres, contributions, projections des individus et des variables).
+
+## Interprétation de la dimension 1 
+
+La première dimension (Dim 1) explique environ **21 %** de l’inertie totale et constitue l’axe principal de structuration des données.
+
+Les graphiques de contributions montrent que **`charges`** et **`smoker`** sont les variables qui contribuent le plus fortement à cet axe, avec des contributions largement supérieures à la moyenne.  
+La projection des variables quantitatives indique que `charges` est fortement alignée avec Dim 1, confirmant une corrélation positive marquée avec cet axe.
+
+Du point de vue des modalités qualitatives, les modalités **`yes` (fumeur)** et **`no` (non-fumeur)** sont clairement opposées sur Dim 1, ce qui traduit une forte différenciation des profils selon le statut fumeur.
+
+Les variables `age` et `bmi` contribuent de manière secondaire à la construction de cet axe, tandis que `sex`, `children` et `region` jouent un rôle marginal.
+
+**La dimension 1 peut ainsi être interprétée comme un “axe des coûts médicaux”, fortement associé au tabagisme**, opposant des profils à charges élevées (fumeurs) à des profils à charges plus faibles (non-fumeurs).
+
+## Interprétation de la dimension 2
+
+La deuxième dimension (Dim 2) explique environ **14 %** de l’inertie totale et apporte une information complémentaire à la première.
+
+Les contributions montrent que **`bmi`** et **`region`** sont les principales variables structurantes de cet axe.  
+La projection des variables quantitatives indique que `bmi` est fortement corrélé à Dim 2, tandis que `charges` présente une contribution et une corrélation très faibles avec cette dimension.
+
+Concernant les modalités qualitatives, certaines régions (notamment **`southeast`**) se distinguent sur Dim 2, alors que d’autres modalités régionales se situent du côté opposé de l’axe.  
+Les modalités liées au sexe (`male`, `female`) sont proches de l’origine, indiquant une influence limitée sur cette dimension.
+
+**La dimension 2 peut être interprétée comme un axe lié à la morphologie (IMC) et aux effets régionaux**, relativement indépendant du niveau des charges médicales.
+
+
+# Conclusion
+
+Cette étude a permis de mettre en évidence la structure du jeu de données *Insurance*
+à travers une analyse exploratoire et multivariée.
+
+Plus précisément, elle a permis de :
+- décrire les principales caractéristiques des variables quantitatives et qualitatives ;
+- réaliser une **analyse factorielle des données mixtes (FAMD)**, adaptée à la nature hétérogène des variables ;
+- identifier les variables les plus contributives à la variabilité des données, en particulier `charges` et `smoker` ;
+- interpréter les axes factoriels, avec une première dimension associée aux **coûts médicaux** et au **statut fumeur**, et une seconde dimension liée principalement à l’**IMC** et à la **région** ;
+- analyser le positionnement de la variable illustrative `charges`, confirmant sa forte association avec la première dimension.
+
+Ces résultats confirment la pertinence de la FAMD pour analyser des données mixtes
+et mettent en évidence le rôle central du tabagisme et des dépenses médicales
+dans la structuration des profils d’individus.
+
+
+# Session info
+
+Les informations suivantes permettent de garantir la reproductibilité
+des analyses présentées dans ce rapport.
+
